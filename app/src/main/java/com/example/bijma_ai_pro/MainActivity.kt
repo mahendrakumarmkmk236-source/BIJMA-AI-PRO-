@@ -33,6 +33,13 @@ class MainActivity : Activity() {
     private var webView: WebView? = null
     private var tts: TextToSpeech? = null
     private var zoomed = false
+    private var iptvPlayerView: PlayerView? = null
+private var iptvVideoFrame: FrameLayout? = null
+private var iptvChannelTitle: TextView? = null
+private var iptvChannelSearch: EditText? = null
+private var iptvFullScreen = false
+private var iptvRoot: LinearLayout? = null
+private var iptvChannelScroll: ScrollView? = null
 
     private val channels = mutableListOf<Pair<String, String>>()
     private var channelList: LinearLayout? = null
@@ -509,70 +516,444 @@ class MainActivity : Activity() {
         }
         layout.addView(back)
 
-        addHeading(layout, name)
+// M3U PLAYLIST - PREMIUM JIOTV STYLE
 
-        val frame = FrameLayout(this)
+private fun showM3uScreen() {
+    player?.release()
+    player = ExoPlayer.Builder(this).build()
 
-        val videoView = PlayerView(this).apply {
-            useController = true
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+    iptvFullScreen = false
+    zoomed = false
+
+    val root = newLayout()
+    iptvRoot = root
+
+    // TOP CONTROLS
+    val topControls = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+
+    val topRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+
+    val back = Button(this).apply {
+        text = "← वापस"
+        setOnClickListener {
+            showHome()
         }
+    }
 
-        player = ExoPlayer.Builder(this).build()
-        videoView.player = player
+    topRow.addView(back)
 
-        frame.addView(
-            videoView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(250)
-            )
+    val heading = TextView(this).apply {
+        text = "  LIVE TV"
+        textSize = 22f
+        setTextColor(white)
+        setTypeface(null, android.graphics.Typeface.BOLD)
+    }
+
+    topRow.addView(heading)
+    topControls.addView(topRow)
+
+    // PLAYLIST URL
+    val urlInput = EditText(this).apply {
+        hint = "M3U Playlist URL डालें"
+        setTextColor(white)
+        setHintTextColor(Color.LTGRAY)
+        setSingleLine(true)
+        setBackgroundColor(card)
+    }
+
+    topControls.addView(
+        urlInput,
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(48)
         )
+    )
 
-        val zoomButton = Button(this).apply {
-            text = "ZOOM"
-            setTextColor(white)
-            setBackgroundColor(purple)
-            setOnClickListener {
-                zoomed = !zoomed
-                videoView.resizeMode = if (zoomed) {
-                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                } else {
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                }
-                text = if (zoomed) "FIT" else "ZOOM"
-            }
-        }
+    addButton(topControls, "📡 Playlist Load करें") {
+        val url = urlInput.text.toString().trim()
 
-        val zoomParams = FrameLayout.LayoutParams(
-            dp(90),
-            dp(45),
-            Gravity.TOP or Gravity.END
-        )
-        frame.addView(zoomButton, zoomParams)
-
-        layout.addView(
-            frame,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(250)
-            )
-        )
-
-        setContentView(layout)
-
-        try {
-            player?.setMediaItem(MediaItem.fromUri(url))
-            player?.prepare()
-            player?.playWhenReady = true
-        } catch (e: Exception) {
+        if (url.isNotEmpty()) {
+            loadM3u(url)
+        } else {
             Toast.makeText(
                 this,
-                "वीडियो चलाने में समस्या",
+                "पहले M3U URL डालें",
                 Toast.LENGTH_SHORT
             ).show()
         }
     }
+
+    root.addView(topControls)
+
+    // VIDEO PLAYER
+    val videoFrame = FrameLayout(this).apply {
+        setBackgroundColor(Color.BLACK)
+    }
+
+    iptvVideoFrame = videoFrame
+
+    val videoView = PlayerView(this).apply {
+        player = this@MainActivity.player
+        useController = true
+        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+
+    iptvPlayerView = videoView
+
+    videoFrame.addView(
+        videoView,
+        FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
+    )
+
+    // FULL SCREEN BUTTON
+    val fullButton = Button(this).apply {
+        text = "⛶"
+        textSize = 22f
+        setTextColor(white)
+        setBackgroundColor(Color.DKGRAY)
+        setOnClickListener {
+            toggleIptvFullScreen()
+        }
+    }
+
+    videoFrame.addView(
+        fullButton,
+        FrameLayout.LayoutParams(
+            dp(55),
+            dp(48),
+            Gravity.TOP or Gravity.END
+        )
+    )
+
+    // ZOOM BUTTON
+    val zoomButton = Button(this).apply {
+        text = "ZOOM"
+        textSize = 12f
+        setTextColor(white)
+        setBackgroundColor(Color.DKGRAY)
+
+        setOnClickListener {
+            zoomed = !zoomed
+
+            videoView.resizeMode =
+                if (zoomed) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+
+            text = if (zoomed) "FIT" else "ZOOM"
+        }
+    }
+
+    videoFrame.addView(
+        zoomButton,
+        FrameLayout.LayoutParams(
+            dp(75),
+            dp(42),
+            Gravity.BOTTOM or Gravity.END
+        )
+    )
+
+    root.addView(
+        videoFrame,
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(220)
+        )
+    )
+
+    // CURRENT CHANNEL NAME
+    val channelTitle = TextView(this).apply {
+        text = "📺 चैनल चुनें"
+        textSize = 16f
+        setTextColor(white)
+        setPadding(dp(8), dp(10), dp(8), dp(10))
+    }
+
+    iptvChannelTitle = channelTitle
+    root.addView(channelTitle)
+
+    // CHANNEL SEARCH
+    val searchRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+    }
+
+    val searchInput = EditText(this).apply {
+        hint = "चैनल खोजें..."
+        setTextColor(white)
+        setHintTextColor(Color.LTGRAY)
+        setSingleLine(true)
+        setBackgroundColor(card)
+    }
+
+    iptvChannelSearch = searchInput
+
+    searchRow.addView(
+        searchInput,
+        LinearLayout.LayoutParams(0, dp(48), 1f)
+    )
+
+    val searchButton = Button(this).apply {
+        text = "खोजें"
+        setOnClickListener {
+            renderChannels(searchInput.text.toString())
+        }
+    }
+
+    searchRow.addView(searchButton)
+    root.addView(searchRow)
+
+    // CHANNEL LIST
+    val channelScroll = ScrollView(this)
+
+    iptvChannelScroll = channelScroll
+
+    channelList = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+
+    channelScroll.addView(channelList)
+
+    root.addView(
+        channelScroll,
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        )
+    )
+
+    setContentView(root)
+
+    renderChannels()
+}
+
+// LOAD M3U PLAYLIST
+
+private fun loadM3u(url: String) {
+    Toast.makeText(
+        this,
+        "Playlist लोड हो रही है...",
+        Toast.LENGTH_SHORT
+    ).show()
+
+    Thread {
+        try {
+            val connection = URL(url).openConnection()
+            connection.connectTimeout = 15000
+            connection.readTimeout = 20000
+
+            val text = connection.getInputStream()
+                .bufferedReader()
+                .use { it.readText() }
+
+            val result = mutableListOf<Pair<String, String>>()
+            var name = "TV Channel"
+
+            for (line in text.lineSequence()) {
+                val value = line.trim()
+
+                if (value.startsWith("#EXTINF")) {
+                    name = value.substringAfter(",", "TV Channel").trim()
+                } else if (
+                    value.isNotEmpty() &&
+                    !value.startsWith("#")
+                ) {
+                    result.add(Pair(name, value))
+                    name = "TV Channel"
+                }
+            }
+
+            runOnUiThread {
+                channels.clear()
+                channels.addAll(result)
+
+                renderChannels()
+
+                Toast.makeText(
+                    this,
+                    "${channels.size} चैनल मिले",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+        } catch (e: Exception) {
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "Playlist लोड नहीं हुई: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }.start()
+}
+
+// CHANNEL CARDS
+
+private fun renderChannels(search: String = "") {
+    val list = channelList ?: return
+
+    list.removeAllViews()
+
+    val filtered = channels.filter {
+        it.first.contains(search, ignoreCase = true)
+    }
+
+    for ((name, url) in filtered) {
+
+        val item = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+
+            background =
+                android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(24, 37, 60))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), Color.rgb(48, 68, 95))
+                }
+
+            isClickable = true
+            isFocusable = true
+
+            setOnClickListener {
+                playChannel(name, url)
+            }
+        }
+
+        val icon = TextView(this).apply {
+            text = "▶"
+            textSize = 20f
+            setTextColor(Color.rgb(70, 210, 230))
+        }
+
+        item.addView(icon)
+
+        val channelName = TextView(this).apply {
+            text = "  $name"
+            textSize = 15f
+            setTextColor(white)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+
+        item.addView(
+            channelName,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        val params = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(58)
+        )
+
+        params.setMargins(0, dp(4), 0, dp(4))
+
+        list.addView(item, params)
+    }
+
+    if (filtered.isEmpty()) {
+        val empty = TextView(this).apply {
+            text = if (channels.isEmpty()) {
+                "पहले M3U Playlist Load करें"
+            } else {
+                "कोई चैनल नहीं मिला"
+            }
+            setTextColor(Color.LTGRAY)
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(25), dp(12), dp(25))
+        }
+
+        list.addView(empty)
+    }
+}
+
+// PLAY CHANNEL IN SAME VIDEO PLAYER
+
+private fun playChannel(name: String, url: String) {
+    try {
+        val activePlayer = player ?: return
+
+        iptvChannelTitle?.text = "▶ $name"
+
+        activePlayer.setMediaItem(
+            MediaItem.fromUri(url)
+        )
+
+        activePlayer.prepare()
+        activePlayer.playWhenReady = true
+
+    } catch (e: Exception) {
+        Toast.makeText(
+            this,
+            "वीडियो शुरू नहीं हुआ: ${e.message}",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+}
+
+// FULL SCREEN
+
+private fun toggleIptvFullScreen() {
+    val controls = iptvRoot ?: return
+    val frame = iptvVideoFrame ?: return
+
+    iptvFullScreen = !iptvFullScreen
+
+    if (iptvFullScreen) {
+
+        controls.getChildAt(0).visibility = View.GONE
+        iptvChannelTitle?.visibility = View.GONE
+        iptvChannelSearch?.let {
+    (it.parent as? View)?.visibility = View.GONE
+        }
+        iptvChannelScroll?.visibility = View.GONE
+
+        frame.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        )
+
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+
+    } else {
+
+        controls.getChildAt(0).visibility = View.VISIBLE
+        iptvChannelTitle?.visibility = View.VISIBLE
+        iptvChannelSearch?.let {
+    (it.parent as? View)?.visibility = View.VISIBLE
+        }
+        iptvChannelScroll?.visibility = View.VISIBLE
+
+        frame.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(220)
+        )
+
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_VISIBLE
+    }
+
+    controls.requestLayout()
+}
 
     // VOICE SEARCH
 
