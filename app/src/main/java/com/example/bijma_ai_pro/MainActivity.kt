@@ -99,86 +99,196 @@ class MainActivity : Activity() {
     }
 
     private fun showHome() {
-        player?.release()
-        player = null
-        webView = null
+    player?.release()
+    player = null
+    webView = null
 
-        val layout = newLayout()
+    val layout = newLayout()
+    layout.setPadding(dp(16), dp(20), dp(16), dp(16))
 
-        val scroll = ScrollView(this)
-        val content = LinearLayout(this).apply {
+    val scroll = ScrollView(this)
+    val content = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+    }
+
+    val header = TextView(this).apply {
+        text = "BIJMA AI PRO"
+        textSize = 29f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        setPadding(0, dp(12), 0, dp(4))
+    }
+    content.addView(header)
+
+    val subtitle = TextView(this).apply {
+        text = "YOUR SMART DIGITAL WORLD"
+        textSize = 11f
+        setTextColor(Color.rgb(90, 205, 230))
+        gravity = Gravity.CENTER
+        setPadding(0, 0, 0, dp(22))
+    }
+    content.addView(subtitle)
+
+    val welcome = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(
+                Color.rgb(93, 55, 205),
+                Color.rgb(20, 130, 170)
+            )
+        ).apply {
+            cornerRadius = dp(22).toFloat()
+        }
+        setPadding(dp(20), dp(22), dp(20), dp(22))
+    }
+
+    val welcomeTitle = TextView(this).apply {
+        text = "नमस्ते! 👋"
+        textSize = 23f
+        setTextColor(Color.WHITE)
+        setTypeface(null, android.graphics.Typeface.BOLD)
+    }
+    welcome.addView(welcomeTitle)
+
+    val welcomeText = TextView(this).apply {
+        text = "मैं आपकी क्या मदद कर सकता हूँ?"
+        textSize = 15f
+        setTextColor(Color.WHITE)
+        setPadding(0, dp(7), 0, 0)
+    }
+    welcome.addView(welcomeText)
+
+    val welcomeParams = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT
+    )
+    welcomeParams.bottomMargin = dp(22)
+    content.addView(welcome, welcomeParams)
+
+    val section = TextView(this).apply {
+        text = "आपकी स्मार्ट सुविधाएँ"
+        textSize = 19f
+        setTextColor(Color.WHITE)
+        setTypeface(null, android.graphics.Typeface.BOLD)
+        setPadding(dp(3), dp(5), 0, dp(12))
+    }
+    content.addView(section)
+
+    val grid = android.widget.GridLayout(this).apply {
+        columnCount = 2
+        alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        useDefaultMargins = false
+    }
+
+    fun addFeature(
+        icon: String,
+        title: String,
+        description: String,
+        action: () -> Unit
+    ) {
+        val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(15), dp(12), dp(10), dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(24, 37, 60))
+                cornerRadius = dp(19).toFloat()
+                setStroke(dp(1), Color.rgb(48, 68, 95))
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
         }
 
-        addHeading(content, "BIJMA AI PRO")
-
-        val subtitle = TextView(this).apply {
-            text = "आपका स्मार्ट डिजिटल असिस्टेंट"
-            textSize = 17f
-            setTextColor(white)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(20))
+        val iconView = TextView(this).apply {
+            text = icon
+            textSize = 29f
+            setPadding(0, 0, 0, dp(8))
         }
-        content.addView(subtitle)
+        item.addView(iconView)
 
-        val welcome = TextView(this).apply {
-            text = "नमस्ते! मैं आपकी क्या मदद कर सकता हूँ?"
-            textSize = 20f
-            gravity = Gravity.CENTER
-            setTextColor(white)
-            setBackgroundColor(purple)
-            setPadding(dp(15), dp(25), dp(15), dp(25))
+        val titleView = TextView(this).apply {
+            text = title
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
         }
-        content.addView(welcome)
+        item.addView(titleView)
 
-        addButton(content, "🎙 Voice Assistant") {
-            startVoiceSearch()
-        }
-
-        addButton(content, "🔎 Google Search") {
-            showBrowser("https://www.google.com")
-        }
-
-        addButton(content, "▶ YouTube") {
-            showBrowser("https://m.youtube.com")
-        }
-
-        addButton(content, "📺 Live TV") {
-            showM3uScreen()
-        }
-
-        addButton(content, "📡 IPTV / M3U Playlist") {
-            showM3uScreen()
-        }
-
-        addButton(content, "🌐 Smart Browser") {
-            showBrowser("https://www.google.com")
-        }
-
-        addButton(content, "🛡 VPN Settings") {
-            showVpnInfo()
-        }
-
-        val footer = TextView(this).apply {
-            text = "BIJMA AI PRO • Smart Experience"
-            gravity = Gravity.CENTER
-            textSize = 13f
+        val descriptionView = TextView(this).apply {
+            text = description
+            textSize = 11f
             setTextColor(Color.LTGRAY)
-            setPadding(0, dp(25), 0, dp(20))
+            setPadding(0, dp(4), 0, 0)
         }
-        content.addView(footer)
+        item.addView(descriptionView)
 
-        scroll.addView(content)
-        layout.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
+        val params = android.widget.GridLayout.LayoutParams().apply {
+            width = 0
+            height = dp(132)
+            columnSpec = android.widget.GridLayout.spec(
+                android.widget.GridLayout.UNDEFINED,
                 1f
             )
-        )
+            setMargins(dp(4), dp(5), dp(4), dp(5))
+        }
 
-        setContentView(layout)
+        grid.addView(item, params)
+    }
+
+    addFeature("🎙️", "Voice Assistant", "आवाज़ से बात करें") {
+        startVoiceSearch()
+    }
+
+    addFeature("▶️", "YouTube", "वीडियो देखें") {
+        showBrowser("https://m.youtube.com")
+    }
+
+    addFeature("📺", "Live TV", "लाइव चैनल देखें") {
+        showM3uScreen()
+    }
+
+    addFeature("📡", "IPTV Player", "M3U Playlist चलाएँ") {
+        showM3uScreen()
+    }
+
+    addFeature("🌐", "Smart Browser", "वेबसाइट खोलें") {
+        showBrowser("https://www.google.com")
+    }
+
+    addFeature("🔎", "Google Search", "इंटरनेट पर खोजें") {
+        showBrowser("https://www.google.com")
+    }
+
+    addFeature("🛡️", "VPN Settings", "VPN सेटिंग्स देखें") {
+        showVpnInfo()
+    }
+
+    content.addView(grid)
+
+    val footer = TextView(this).apply {
+        text = "BIJMA AI PRO  •  SMART EXPERIENCE"
+        textSize = 11f
+        gravity = Gravity.CENTER
+        setTextColor(Color.LTGRAY)
+        setPadding(0, dp(25), 0, dp(15))
+    }
+    content.addView(footer)
+
+    scroll.addView(content)
+
+    layout.addView(
+        scroll,
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        )
+    )
+
+    setContentView(layout)
     }
 
     // SMART BROWSER
