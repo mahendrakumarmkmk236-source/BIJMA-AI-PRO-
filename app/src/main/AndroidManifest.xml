@@ -6,11 +6,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <application
+        <application
         android:allowBackup="true"
         android:label="BIJMA AI PRO"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:icon="@drawable/bijma_ai_pro_icon"
+        android:roundIcon="@drawable/bijma_ai_pro_icon">
 
         <activity
             android:name=".MainActivity"
