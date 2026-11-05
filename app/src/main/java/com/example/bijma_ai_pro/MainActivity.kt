@@ -207,7 +207,7 @@ class MainActivity : Activity() {
 }
 
 val browserIcon = ImageView(this).apply {
-    setImageResource(R.drawable.browser_icon)
+    setImageResource(R.drawable.bijma_ai_pro_icon)
     scaleType = ImageView.ScaleType.FIT_CENTER
 }
 
