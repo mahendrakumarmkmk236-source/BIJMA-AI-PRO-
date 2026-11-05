@@ -190,9 +190,52 @@ class MainActivity : Activity() {
         }
         content.addView(subtitle)
 
-        addHomeButton(content, "🌐  Smart Browser") {
-            showBrowser("https://www.google.com")
-        }
+        val browserCard = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    gravity = Gravity.CENTER
+    setPadding(16, 18, 16, 18)
+
+    background = android.graphics.drawable.GradientDrawable().apply {
+        setColor(cardColor)
+        cornerRadius = 28f
+        setStroke(4, Color.rgb(255, 105, 0))
+    }
+
+    setOnClickListener {
+        showBrowser("https://www.google.com")
+    }
+}
+
+val browserIcon = ImageView(this).apply {
+    setImageResource(R.drawable.browser_icon)
+    scaleType = ImageView.ScaleType.FIT_CENTER
+}
+
+browserCard.addView(
+    browserIcon,
+    LinearLayout.LayoutParams(90, 90)
+)
+
+val browserLabel = TextView(this).apply {
+    text = "Browser\nवेब ब्राउज़र"
+    textSize = 19f
+    setTextColor(Color.WHITE)
+    typeface = Typeface.DEFAULT_BOLD
+    gravity = Gravity.CENTER
+    setPadding(8, 10, 8, 4)
+}
+
+browserCard.addView(browserLabel)
+
+content.addView(
+    browserCard,
+    LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT
+    ).apply {
+        setMargins(0, 7, 0, 7)
+    }
+)
 
         addHomeButton(content, "▶  YouTube") {
             showBrowser("https://m.youtube.com")
