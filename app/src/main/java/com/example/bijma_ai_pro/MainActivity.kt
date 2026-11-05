@@ -360,50 +360,268 @@ content.addView(
                     address.setText(url)
                 }
             }
-        }
+private fun showBrowser(startUrl: String) {
+    stopPlayer()
+    closeBrowser()
+    setupRoot()
 
-        web.webChromeClient = object : WebChromeClient() {
+    val topBar = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
 
-            override fun onShowCustomView(
-                view: View?,
-                callback: CustomViewCallback?
-            ) {
-                if (view == null) return
+    val back = makeButton("‹") {
+        if (browser?.canGoBack() == true) browser?.goBack()
+    }
 
-                if (fullScreenView != null) {
-                    callback?.onCustomViewHidden()
-                    return
-                }
+    val forward = makeButton("›") {
+        if (browser?.canGoForward() == true) browser?.goForward()
+    }
 
-                fullScreenView = view
-                fullScreenCallback = callback
-                root.visibility = View.GONE
+    val refresh = makeButton("↻") {
+        browser?.reload()
+    }
 
-                addContentView(
-                    view,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
+    topBar.addView(back, LinearLayout.LayoutParams(48, 48))
+    topBar.addView(forward, LinearLayout.LayoutParams(48, 48))
+    topBar.addView(refresh, LinearLayout.LayoutParams(48, 48))
 
-                window.addFlags(
-                    WindowManager.LayoutParams.FLAG_FULLSCREEN
-                )
+    root.addView(topBar)
+
+    val addressRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+
+    val address = EditText(this).apply {
+        hint = "वेबसाइट खोजें या URL लिखें"
+        setSingleLine(true)
+        textSize = 15f
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.LTGRAY)
+        setPadding(14, 8, 14, 8)
+        setBackground(
+            android.graphics.drawable.GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = 35f
+                setStroke(2, accentColor)
+            }
+        )
+    }
+
+    browserAddress = address
+
+    val go = makeButton("GO") {
+        val typed = address.text.toString().trim()
+
+        if (typed.isNotEmpty()) {
+            val url = when {
+                typed.startsWith("http://") ||
+                typed.startsWith("https://") -> typed
+
+                typed.contains(" ") ->
+                    "https://www.google.com/search?q=" +
+                    Uri.encode(typed)
+
+                typed.contains(".") -> "https://$typed"
+
+                else -> "https://www.google.com/search?q=" +
+                    Uri.encode(typed)
             }
 
-            override fun onHideCustomView() {
-                exitWebFullScreen()
+            browser?.loadUrl(url)
+        }
+    }
+
+    addressRow.addView(
+        address,
+        LinearLayout.LayoutParams(0, 52, 1f)
+    )
+
+    addressRow.addView(
+        go,
+        LinearLayout.LayoutParams(65, 52)
+    )
+
+    root.addView(addressRow)
+
+    val web = WebView(this)
+    browser = web
+
+    web.settings.javaScriptEnabled = true
+    web.settings.domStorageEnabled = true
+    web.settings.loadsImagesAutomatically = true
+    web.settings.useWideViewPort = true
+    web.settings.loadWithOverviewMode = true
+    web.settings.mediaPlaybackRequiresUserGesture = false
+
+    web.webViewClient = object : WebViewClient() {
+        override fun shouldOverrideUrlLoading(
+            view: WebView?,
+            request: WebResourceRequest?
+        ): Boolean = false
+
+        override fun onPageFinished(
+            view: WebView?,
+            url: String?
+        ) {
+            if (url != null && !url.startsWith("data:")) {
+                address.setText(url)
             }
         }
+    }
 
-        root.addView(
-            web,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+    web.webChromeClient = object : WebChromeClient() {
+        override fun onShowCustomView(
+            view: View?,
+            callback: CustomViewCallback?
+        ) {
+            if (view == null) return
+
+            if (fullScreenView != null) {
+                callback?.onCustomViewHidden()
+                return
+            }
+
+            fullScreenView = view
+            fullScreenCallback = callback
+            root.visibility = View.GONE
+
+            addContentView(
+                view,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
             )
+
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
+        }
+
+        override fun onHideCustomView() {
+            exitWebFullScreen()
+        }
+    }
+
+    root.addView(
+        web,
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        )
+    )
+        val homePage = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport"
+              content="width=device-width, initial-scale=1">
+        <style>
+        body {
+            margin:0;
+            padding:22px 14px;
+            background:linear-gradient(145deg,#080d24,#211044,#071b35);
+            color:white;
+            font-family:Arial,sans-serif;
+            text-align:center;
+        }
+        .logo {
+            font-size:30px;
+            font-weight:bold;
+            margin-top:35px;
+            color:#ff8a00;
+        }
+        .tag {
+            color:#ddd;
+            margin:10px;
+            font-size:14px;
+        }
+        .search {
+            display:flex;
+            margin:28px 4px;
+        }
+        input {
+            width:100%;
+            padding:16px;
+            border-radius:30px;
+            border:2px solid #8585ff;
+            background:#242746;
+            color:white;
+            font-size:16px;
+        }
+        .grid {
+            display:grid;
+            grid-template-columns:repeat(2,1fr);
+            gap:14px;
+            margin-top:25px;
+        }
+        .tile {
+            display:block;
+            padding:22px 8px;
+            border:1px solid #655bba;
+            border-radius:20px;
+            background:#202344;
+            color:white;
+            text-decoration:none;
+            font-size:18px;
+            font-weight:bold;
+        }
+        .tile span {
+            display:block;
+            font-size:30px;
+            margin-bottom:10px;
+        }
+        </style>
+        </head>
+        <body>
+        <div class="logo">BIJMA AI PRO</div>
+        <div class="tag">Smart • Fast • Private Browser</div>
+
+        <form class="search"
+              action="https://www.google.com/search">
+            <input name="q"
+                   placeholder="वेब पर खोजें या सवाल लिखें">
+        </form>
+
+        <div class="grid">
+            <a class="tile" href="https://www.youtube.com">
+                <span>▶</span>YouTube
+            </a>
+            <a class="tile" href="https://www.google.com">
+                <span>🌐</span>Google
+            </a>
+            <a class="tile" href="https://www.facebook.com">
+                <span>f</span>Facebook
+            </a>
+            <a class="tile" href="https://www.instagram.com">
+                <span>◎</span>Instagram
+            </a>
+            <a class="tile" href="https://www.wikipedia.org">
+                <span>W</span>Wikipedia
+            </a>
+            <a class="tile" href="https://www.bing.com">
+                <span>⌕</span>Bing
+            </a>
+        </div>
+        </body>
+        </html>
+    """.trimIndent()
+
+    if (startUrl == "https://www.google.com") {
+        web.loadDataWithBaseURL(
+            "https://www.google.com",
+            homePage,
+            "text/html",
+            "UTF-8",
+            null
+        )
+    } else {
+        web.loadUrl(startUrl)
+    }
+}
         )
 
         web.loadUrl(startUrl)
