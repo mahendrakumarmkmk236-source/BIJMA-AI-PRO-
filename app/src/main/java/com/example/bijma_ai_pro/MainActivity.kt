@@ -622,11 +622,7 @@ private fun showBrowser(startUrl: String) {
         web.loadUrl(startUrl)
     }
 }
-        )
-
-        web.loadUrl(startUrl)
-    }
-
+        
     private fun exitWebFullScreen() {
         val view = fullScreenView ?: return
 
