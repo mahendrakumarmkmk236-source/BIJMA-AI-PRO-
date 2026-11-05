@@ -1268,5 +1268,11 @@ class MainActivity : Activity() {
         stopPlayer()
         super.onDestroy()
     }
-
+    private fun showMessage(message: String) {
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_LONG
+        ).show()
+    }
 }
