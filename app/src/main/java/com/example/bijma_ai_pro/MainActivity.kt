@@ -1,11 +1,11 @@
+
 package com.example.bijma_ai_pro
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -26,7 +26,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.net.HttpURLConnection
 import java.net.URL
@@ -34,51 +33,32 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private val bg = Color.rgb(9, 14, 29)
-    private val card = Color.rgb(24, 36, 59)
-    private val accent = Color.rgb(65, 205, 225)
-    private val purple = Color.rgb(105, 75, 235)
-    private val white = Color.WHITE
+    private val bgColor = Color.rgb(10, 13, 24)
+    private val panelColor = Color.rgb(25, 30, 48)
+    private val accentColor = Color.rgb(125, 85, 255)
+    private val blueColor = Color.rgb(30, 145, 255)
+    private val whiteColor = Color.WHITE
+    private val mutedColor = Color.rgb(170, 177, 195)
 
-    private var player: ExoPlayer? = null
+    private var rootLayout: LinearLayout? = null
     private var webView: WebView? = null
-    private var browserLayout: LinearLayout? = null
-    private var customVideoView: View? = null
-    private var customVideoCallback: WebChromeClient.CustomViewCallback? = null
-
+    private var player: ExoPlayer? = null
+    private var playerView: PlayerView? = null
+    private var channelBox: LinearLayout? = null
     private var tts: TextToSpeech? = null
-    private var zoomed = false
-    private var iptvFullScreen = false
 
-    private var iptvRoot: LinearLayout? = null
-    private var iptvVideoFrame: FrameLayout? = null
-    private var iptvPlayerView: PlayerView? = null
-    private var iptvTopControls: LinearLayout? = null
-    private var iptvChannelTitle: TextView? = null
-    private var iptvSearchRow: LinearLayout? = null
-    private var iptvChannelScroll: ScrollView? = null
-
-    private var channelList: LinearLayout? = null
-    private var searchInput: EditText? = null
-
-    private val channels = mutableListOf<Pair<String, String>>()
-
-    companion object {
-        private const val VOICE_REQUEST = 101
-    }
+    private val channelList =
+        mutableListOf<Pair<String, String>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        window.statusBarColor = bgColor
+        window.navigationBarColor = Color.BLACK
+
         window.setSoftInputMode(
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         )
-
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale("hi", "IN")
-            }
-        }
 
         showHome()
     }
@@ -87,337 +67,329 @@ class MainActivity : Activity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    private fun newLayout(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+    private fun rounded(
+        color: Int,
+        radius: Int = 18,
+        strokeColor: Int = Color.TRANSPARENT
+    ): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius).toFloat()
+            if (strokeColor != Color.TRANSPARENT) {
+                setStroke(dp(1), strokeColor)
+            }
         }
     }
 
     private fun makeText(
         value: String,
-        size: Float,
-        color: Int = white,
+        size: Float = 15f,
+        color: Int = whiteColor,
         bold: Boolean = false
     ): TextView {
         return TextView(this).apply {
             text = value
             textSize = size
             setTextColor(color)
+            gravity = Gravity.CENTER_VERTICAL
+
             if (bold) {
                 setTypeface(null, Typeface.BOLD)
             }
         }
     }
 
-    private fun addHeading(parent: LinearLayout, value: String) {
-        val heading = makeText(value, 24f, white, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(16))
-        }
-        parent.addView(heading)
-    }
-
-    private fun addButton(
-        parent: LinearLayout,
+    private fun makeButton(
         value: String,
         action: () -> Unit
-    ) {
-        val button = Button(this).apply {
+    ): Button {
+        return Button(this).apply {
             text = value
-            textSize = 15f
+            textSize = 14f
             isAllCaps = false
-            setTextColor(white)
-            setBackgroundColor(card)
+            setTextColor(whiteColor)
+            background = rounded(panelColor, 14, accentColor)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener { action() }
         }
-
-        val params = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(52)
-        )
-        params.setMargins(0, dp(5), 0, dp(5))
-        parent.addView(button, params)
     }
 
+    private fun newPage(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bgColor)
+            setPadding(dp(16), dp(12), dp(16), dp(16))
+        }
+    }
+
+    private fun setPage(page: LinearLayout) {
+        rootLayout = page
+        setContentView(page)
+    }
+
+    private fun addSpace(
+        parent: LinearLayout,
+        height: Int
+    ) {
+        parent.addView(
+            View(this),
+            LinearLayout.LayoutParams(
+                1,
+                dp(height)
+            )
+        )
+    }
+
+    private fun showMessage(message: String) {
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+    
     private fun showHome() {
-        releasePlayer()
-        webView?.stopLoading()
-        webView?.destroy()
-        webView = null
-        browserLayout = null
+        val page = newPage()
+        setPage(page)
 
-        iptvFullScreen = false
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-
-        val root = newLayout()
         val scroll = ScrollView(this)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
-        val header = makeText("BIJMA AI PRO", 30f, white, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(3))
-        }
-        content.addView(header)
+        scroll.addView(content)
+        page.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                -1, 0, 1f
+            )
+        )
 
-        val subtitle = makeText(
-            "YOUR SMART DIGITAL WORLD",
-            11f,
-            accent,
-            true
-        ).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(22))
+        // Logo and title
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
         }
-        content.addView(subtitle)
 
-        val welcome = LinearLayout(this).apply {
+        val robot = makeText("🤖", 36f)
+        header.addView(robot)
+
+        val titleBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(
-                    Color.rgb(93, 55, 205),
-                    Color.rgb(20, 130, 170)
-                )
-            ).apply {
-                cornerRadius = dp(22).toFloat()
-            }
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+            setPadding(dp(10), 0, 0, 0)
         }
 
-        welcome.addView(makeText("नमस्ते! 👋", 23f, white, true))
-        welcome.addView(
-            makeText("मैं आपकी क्या मदद कर सकता हूँ?", 15f).apply {
-                setPadding(0, dp(7), 0, 0)
+        titleBox.addView(
+            makeText("BIJMA AI", 23f, whiteColor, true)
+        )
+        titleBox.addView(
+            makeText("PRO", 13f, accentColor, true)
+        )
+
+        header.addView(
+            titleBox,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+
+        header.addView(
+            makeButton("⚙") {
+                showSettings()
             }
         )
 
-        val welcomeParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
+        content.addView(header)
+        addSpace(content, 25)
+
+        // Welcome
+        content.addView(
+            makeText("Hello! Welcome back", 22f, whiteColor, true)
         )
-        welcomeParams.bottomMargin = dp(22)
-        content.addView(welcome, welcomeParams)
+        content.addView(
+            makeText(
+                "Your smart digital world",
+                14f,
+                mutedColor
+            )
+        )
+
+        addSpace(content, 22)
+
+        // Search bar
+        val searchBox = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = rounded(panelColor, 25)
+            setPadding(dp(15), dp(5), dp(8), dp(5))
+        }
+
+        val searchInput = EditText(this).apply {
+            hint = "Search Google or enter website"
+            setHintTextColor(mutedColor)
+            setTextColor(whiteColor)
+            textSize = 14f
+            singleLine = true
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+
+        searchBox.addView(
+            searchInput,
+            LinearLayout.LayoutParams(0, dp(52), 1f)
+        )
+
+        searchBox.addView(
+            makeButton("GO") {
+                val query = searchInput.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    openWebsite(query)
+                }
+            }
+        )
+
+        content.addView(searchBox)
+        addSpace(content, 25)
 
         content.addView(
-            makeText("आपकी स्मार्ट सुविधाएँ", 19f, white, true).apply {
-                setPadding(dp(3), dp(4), 0, dp(12))
-            }
+            makeText("Quick Shortcuts", 18f, whiteColor, true)
         )
 
-        val grid = android.widget.GridLayout(this).apply {
-            columnCount = 2
-            useDefaultMargins = false
-            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        addSpace(content, 12)
+
+        val shortcuts = listOf(
+            "Google" to "https://www.google.com",
+            "YouTube" to "https://m.youtube.com",
+            "Facebook" to "https://www.facebook.com",
+            "Wikipedia" to "https://www.wikipedia.org"
+        )
+
+        val shortcutRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
         }
 
-        fun addFeature(
-            icon: String,
-            title: String,
-            description: String,
-            action: () -> Unit
-        ) {
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(12), dp(8), dp(12))
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(Color.rgb(24, 37, 60))
-                    cornerRadius = dp(19).toFloat()
-                    setStroke(dp(1), Color.rgb(48, 68, 95))
-                }
-                isClickable = true
-                isFocusable = true
-                setOnClickListener { action() }
+        shortcuts.forEach { item ->
+            val button = makeButton(item.first) {
+                openWebsite(item.second)
             }
 
-            item.addView(makeText(icon, 28f))
-            item.addView(
-                makeText(title, 15f, white, true).apply {
-                    setPadding(0, dp(6), 0, 0)
+            shortcutRow.addView(
+                button,
+                LinearLayout.LayoutParams(0, dp(55), 1f).apply {
+                    marginEnd = dp(5)
                 }
             )
-            item.addView(
-                makeText(description, 11f, Color.LTGRAY).apply {
-                    setPadding(0, dp(4), 0, 0)
-                }
-            )
+        }
 
-            val params = android.widget.GridLayout.LayoutParams().apply {
-                width = 0
-                height = dp(130)
-                columnSpec = android.widget.GridLayout.spec(
-                    android.widget.GridLayout.UNDEFINED,
-                    1f
+        content.addView(shortcutRow)
+        addSpace(content, 25)
+
+        content.addView(
+            makeText("All Features", 20f, whiteColor, true)
+        )
+
+        addSpace(content, 14)
+
+        val features = listOf(
+            "🎙 AI Voice" to { showVoiceAssistant() },
+            "▶ YouTube" to { openWebsite("https://m.youtube.com") },
+            "📺 Live TV" to { showLiveTV() },
+            "🎬 IPTV Player" to { showIPTV() },
+            "🌐 Smart Browser" to { showBrowser() },
+            "🔎 Google Search" to { openWebsite("https://www.google.com") },
+            "🛡 VPN Settings" to { showSettings() },
+            "📁 File Manager" to { showMessage("File Manager") },
+            "📋 M3U Playlist" to { showIPTV() },
+            "⬇ Downloads" to { showMessage("Download Manager") }
+        )
+
+        features.chunked(2).forEach { rowItems ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+
+            rowItems.forEach { feature ->
+                val button = makeButton(feature.first) {
+                    feature.second()
+                }
+
+                row.addView(
+                    button,
+                    LinearLayout.LayoutParams(0, dp(65), 1f).apply {
+                        marginEnd = dp(8)
+                        bottomMargin = dp(8)
+                    }
                 )
-                setMargins(dp(4), dp(5), dp(4), dp(5))
             }
 
-            grid.addView(item, params)
+            if (rowItems.size == 1) {
+                row.addView(
+                    View(this),
+                    LinearLayout.LayoutParams(0, dp(65), 1f)
+                )
+            }
+
+            content.addView(row)
         }
 
-        addFeature("🎙️", "Voice Assistant", "आवाज़ से बात करें") {
-            startVoiceSearch()
-        }
-
-        addFeature("▶️", "YouTube", "वीडियो देखें") {
-            showBrowser("https://m.youtube.com")
-        }
-
-        addFeature("📺", "Live TV", "लाइव चैनल देखें") {
-            showM3uScreen()
-        }
-
-        addFeature("📡", "IPTV Player", "M3U Playlist चलाएँ") {
-            showM3uScreen()
-        }
-
-        addFeature("🌐", "Smart Browser", "वेबसाइट खोलें") {
-            showBrowser("https://www.google.com")
-        }
-
-        addFeature("🔎", "Google Search", "इंटरनेट पर खोजें") {
-            showBrowser("https://www.google.com")
-        }
-
-        addFeature("🛡️", "VPN Settings", "VPN सेटिंग्स देखें") {
-            showVpnInfo()
-        }
-
-        content.addView(grid)
+        addSpace(content, 20)
 
         content.addView(
             makeText(
-                "BIJMA AI PRO  •  SMART EXPERIENCE",
-                11f,
-                Color.LTGRAY
+                "BIJMA AI PRO • Smart Browser Experience",
+                12f,
+                mutedColor
             ).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, dp(24), 0, dp(16))
             }
         )
+    }
+    
+    private fun openWebsite(value: String) {
+        val input = value.trim()
+        if (input.isEmpty()) {
+            showMessage("कृपया वेबसाइट या सर्च लिखें")
+            return
+        }
 
-        scroll.addView(content)
-        root.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
+        val url = when {
+            input.startsWith("http://") || input.startsWith("https://") -> input
+            input.contains(".") && !input.contains(" ") ->
+                "https://$input"
+            else ->
+                "https://www.google.com/search?q=${Uri.encode(input)}"
+        }
 
-        setContentView(root)
+        showBrowser()
+        webView?.loadUrl(url)
     }
 
-    // SMART BROWSER
-
-    private fun showBrowser(initialUrl: String) {
-        releasePlayer()
-        iptvFullScreen = false
-
-        val root = newLayout()
-        browserLayout = root
-
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val back = Button(this).apply {
-            text = "←"
-            setOnClickListener { showHome() }
-        }
-        top.addView(back)
+    private fun showBrowser() {
+        val page = newPage()
 
         val address = EditText(this).apply {
-            hint = "Website या Search लिखें"
+            hint = "वेबसाइट या Google Search लिखें"
             setSingleLine(true)
-            setTextColor(white)
-            setHintTextColor(Color.LTGRAY)
-            setBackgroundColor(card)
+            setTextColor(whiteColor)
+            setHintTextColor(mutedColor)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(panelColor)
         }
 
-        top.addView(
-            address,
-            LinearLayout.LayoutParams(0, dp(48), 1f)
-        )
-
-        val go = Button(this).apply {
-            text = "Go"
-            setOnClickListener {
-                val input = address.text.toString().trim()
-                if (input.isNotEmpty()) {
-                    val url = when {
-                        input.startsWith("http://") ||
-                            input.startsWith("https://") -> input
-
-                        input.contains(".") && !input.contains(" ") ->
-                            "https://$input"
-
-                        else ->
-                            "https://www.google.com/search?q=" +
-                                Uri.encode(input)
-                    }
-                    webView?.loadUrl(url)
-                }
-            }
+        val openButton = makeButton("खोलें") {
+            openWebsite(address.text.toString())
         }
-        top.addView(go)
-        root.addView(top)
 
-        val browser = WebView(this)
+        page.addView(address)
+        page.addView(openButton)
+
+        val browser = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            webViewClient = WebViewClient()
+            webChromeClient = WebChromeClient()
+        }
+
         webView = browser
-
-        browser.settings.javaScriptEnabled = true
-        browser.settings.domStorageEnabled = true
-        browser.settings.useWideViewPort = true
-        browser.settings.loadWithOverviewMode = true
-        browser.settings.mediaPlaybackRequiresUserGesture = false
-
-        browser.webViewClient = WebViewClient()
-
-        browser.webChromeClient = object : WebChromeClient() {
-
-            override fun onShowCustomView(
-                view: View?,
-                callback: CustomViewCallback?
-            ) {
-                if (view == null) return
-
-                if (customVideoView != null) {
-                    callback?.onCustomViewHidden()
-                    return
-                }
-
-                customVideoView = view
-                customVideoCallback = callback
-
-                (view.parent as? ViewGroup)?.removeView(view)
-
-                requestedOrientation =
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-
-                window.decorView.systemUiVisibility =
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-
-                setContentView(view)
-            }
-
-            override fun onHideCustomView() {
-                hideBrowserVideo()
-            }
-        }
-
-        browser.loadUrl(initialUrl)
-
-        root.addView(
+        page.addView(
             browser,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -425,481 +397,180 @@ class MainActivity : Activity() {
                 1f
             )
         )
-
-        setContentView(root)
+        setPage(page)
     }
 
-    private fun hideBrowserVideo() {
-        if (customVideoView == null) return
-
-        customVideoView = null
-        customVideoCallback?.onCustomViewHidden()
-        customVideoCallback = null
-
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-
-        browserLayout?.let { setContentView(it) }
-    }
-    
-    // IPTV / LIVE TV SCREEN
-
-    private fun showM3uScreen() {
-        iptvFullScreen = false
-        zoomed = false
-
-        if (player == null) {
-            player = ExoPlayer.Builder(this).build()
-        }
-
-        val root = newLayout()
-        iptvRoot = root
-
-        // TOP CONTROLS
-        val topControls = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        iptvTopControls = topControls
-
-        val topRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val back = Button(this).apply {
-            text = "← वापस"
-            setOnClickListener { showHome() }
-        }
-        topRow.addView(back)
-
-        topRow.addView(
-            makeText("  LIVE TV", 22f, white, true)
-        )
-        topControls.addView(topRow)
-
-        val urlInput = EditText(this).apply {
-            hint = "अपनी M3U Playlist URL डालें"
-            setTextColor(white)
-            setHintTextColor(Color.LTGRAY)
-            setSingleLine(true)
-            setBackgroundColor(card)
-        }
-
-        topControls.addView(
-            urlInput,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48)
+    private fun showSettings() {
+        val page = newPage()
+        page.addView(makeText("सेटिंग्स", 25, whiteColor, true))
+        page.addView(makeText("VPN सेटिंग्स", 19, whiteColor, true))
+        page.addView(
+            makeText(
+                "यहाँ VPN सर्वर और कनेक्शन की सेटिंग रखी जाएगी। " +
+                    "अभी सर्वर की जानकारी उपलब्ध नहीं है, इसलिए VPN कनेक्ट नहीं होगा।",
+                15,
+                mutedColor
             )
         )
-
-        addButton(topControls, "📡 Playlist Load करें") {
-            val url = urlInput.text.toString().trim()
-            if (url.isNotEmpty()) {
-                loadM3u(url)
-            } else {
-                Toast.makeText(
-                    this,
-                    "पहले M3U URL डालें",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-
-        root.addView(topControls)
-
-        // VIDEO PLAYER FRAME
-        val videoFrame = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
-        iptvVideoFrame = videoFrame
-
-        val videoView = PlayerView(this).apply {
-            player = this@MainActivity.player
-            useController = true
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-        }
-        iptvPlayerView = videoView
-
-        videoFrame.addView(
-            videoView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        // FULL SCREEN BUTTON
-        val fullButton = Button(this).apply {
-            text = "⛶"
-            textSize = 22f
-            setTextColor(white)
-            setBackgroundColor(Color.DKGRAY)
-            setOnClickListener {
-                toggleIptvFullScreen()
-            }
-        }
-
-        videoFrame.addView(
-            fullButton,
-            FrameLayout.LayoutParams(
-                dp(55),
-                dp(48),
-                Gravity.TOP or Gravity.END
-            )
-        )
-
-        // ZOOM BUTTON
-        val zoomButton = Button(this).apply {
-            text = "ZOOM"
-            textSize = 12f
-            setTextColor(white)
-            setBackgroundColor(Color.DKGRAY)
-
-            setOnClickListener {
-                zoomed = !zoomed
-
-                videoView.resizeMode =
-                    if (zoomed) {
-                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    } else {
-                        AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
-
-                text = if (zoomed) "FIT" else "ZOOM"
-            }
-        }
-
-        videoFrame.addView(
-            zoomButton,
-            FrameLayout.LayoutParams(
-                dp(75),
-                dp(42),
-                Gravity.BOTTOM or Gravity.END
-            )
-        )
-
-        root.addView(
-            videoFrame,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(220)
-            )
-        )
-
-        // CURRENT CHANNEL
-        val title = makeText("📺 चैनल चुनें", 16f, white, true).apply {
-            setPadding(dp(8), dp(10), dp(8), dp(10))
-        }
-        iptvChannelTitle = title
-        root.addView(title)
-
-        // SEARCH
-        val searchRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        iptvSearchRow = searchRow
-
-        val search = EditText(this).apply {
-            hint = "चैनल खोजें..."
-            setTextColor(white)
-            setHintTextColor(Color.LTGRAY)
-            setSingleLine(true)
-            setBackgroundColor(card)
-        }
-        searchInput = search
-
-        searchRow.addView(
-            search,
-            LinearLayout.LayoutParams(0, dp(48), 1f)
-        )
-
-        val searchButton = Button(this).apply {
-            text = "खोजें"
-            setOnClickListener {
-                renderChannels(search.text.toString())
-            }
-        }
-        searchRow.addView(searchButton)
-        root.addView(searchRow)
-
-        // CHANNEL LIST
-        val channelScroll = ScrollView(this)
-        iptvChannelScroll = channelScroll
-
-        channelList = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        channelScroll.addView(channelList)
-
-        root.addView(
-            channelScroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        setContentView(root)
-        renderChannels()
+        page.addView(makeButton("होम पर वापस जाएँ") {
+            showHome()
+        })
+        setPage(page)
     }
 
-    // LOAD M3U PLAYLIST
-
-    private fun loadM3u(url: String) {
-        Toast.makeText(
-            this,
-            "Playlist लोड हो रही है...",
-            Toast.LENGTH_SHORT
-        ).show()
-
-        Thread {
-            var connection: HttpURLConnection? = null
-
-            try {
-                connection = URL(url).openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 20000
-                connection.instanceFollowRedirects = true
-                connection.setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 BIJMA-AI-PRO"
-                )
-
-                val text = connection.inputStream
-                    .bufferedReader()
-                    .use { it.readText() }
-
-                val result = mutableListOf<Pair<String, String>>()
-                var name = "TV Channel"
-
-                for (line in text.lineSequence()) {
-                    val value = line.trim()
-
-                    if (value.startsWith("#EXTINF", ignoreCase = true)) {
-                        name = value.substringAfter(",", "TV Channel").trim()
-                        if (name.isEmpty()) name = "TV Channel"
-                    } else if (
-                        value.isNotEmpty() &&
-                        !value.startsWith("#")
-                    ) {
-                        result.add(Pair(name, value))
-                        name = "TV Channel"
-                    }
-                }
-
-                runOnUiThread {
-                    channels.clear()
-                    channels.addAll(result)
-                    renderChannels(searchInput?.text?.toString() ?: "")
-
-                    Toast.makeText(
-                        this,
-                        "${channels.size} चैनल मिले",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-
-            } catch (e: Exception) {
-                runOnUiThread {
-                    Toast.makeText(
-                        this,
-                        "Playlist लोड नहीं हुई: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            } finally {
-                connection?.disconnect()
-            }
-        }.start()
-    }
-
-    // CHANNEL CARDS AND SEARCH
-
-    private fun renderChannels(search: String = "") {
-        val list = channelList ?: return
-        list.removeAllViews()
-
-        val filtered = channels.filter {
-            it.first.contains(search.trim(), ignoreCase = true)
-        }
-
-        for ((name, url) in filtered) {
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-
-                background =
-                    android.graphics.drawable.GradientDrawable().apply {
-                        setColor(Color.rgb(24, 37, 60))
-                        cornerRadius = dp(14).toFloat()
-                        setStroke(dp(1), Color.rgb(48, 68, 95))
-                    }
-
-                isClickable = true
-                isFocusable = true
-
-                setOnClickListener {
-                    playChannel(name, url)
-                }
-            }
-
-            item.addView(
-                makeText("▶", 20f, accent, true)
-            )
-
-            item.addView(
-                makeText("  $name", 15f, white, true),
-                LinearLayout.LayoutParams(
-                    0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    1f
-                )
-            )
-
-            val params = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(58)
-            )
-            params.setMargins(0, dp(4), 0, dp(4))
-            list.addView(item, params)
-        }
-
-        if (filtered.isEmpty()) {
-            val message = if (channels.isEmpty()) {
-                "पहले M3U Playlist Load करें"
-            } else {
-                "कोई चैनल नहीं मिला"
-            }
-
-            list.addView(
-                makeText(message, 15f, Color.LTGRAY).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(dp(12), dp(25), dp(12), dp(25))
-                }
-            )
-        }
-    }
-
-    // PLAY CHANNEL IN TOP VIDEO PLAYER
-
-    private fun playChannel(name: String, url: String) {
+    private fun showVoiceAssistant() {
         try {
-            val activePlayer = player ?: return
-
-            iptvChannelTitle?.text = "▶ $name"
-
-            activePlayer.setMediaItem(
-                MediaItem.fromUri(url)
-            )
-            activePlayer.prepare()
-            activePlayer.playWhenReady = true
-
-        } catch (e: Exception) {
-            Toast.makeText(
-                this,
-                "वीडियो शुरू नहीं हुआ: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-        // IPTV FULL SCREEN
-
-    private fun toggleIptvFullScreen() {
-        val root = iptvRoot ?: return
-        val frame = iptvVideoFrame ?: return
-
-        iptvFullScreen = !iptvFullScreen
-
-        if (iptvFullScreen) {
-            iptvTopControls?.visibility = View.GONE
-            iptvChannelTitle?.visibility = View.GONE
-            iptvSearchRow?.visibility = View.GONE
-            iptvChannelScroll?.visibility = View.GONE
-
-            frame.layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-
-            requestedOrientation =
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-
-            window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-
-        } else {
-            iptvTopControls?.visibility = View.VISIBLE
-            iptvChannelTitle?.visibility = View.VISIBLE
-            iptvSearchRow?.visibility = View.VISIBLE
-            iptvChannelScroll?.visibility = View.VISIBLE
-
-            frame.layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(220)
-            )
-
-            requestedOrientation =
-                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-
-            window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_VISIBLE
-        }
-
-        root.requestLayout()
-    }
-
-    // VOICE SEARCH
-
-    private fun startVoiceSearch() {
-        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(
-                this,
-                "Voice Recognition उपलब्ध नहीं है",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        try {
-            val intent = Intent(
-                RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-            ).apply {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
                 )
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE,
-                    "hi-IN"
-                )
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE,
-                    Locale("hi", "IN").toLanguageTag()
-                )
-                putExtra(
-                    RecognizerIntent.EXTRA_PROMPT,
-                    "बोलिए, आपको क्या खोजना है?"
-                )
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "बोलिए, मैं सुन रहा हूँ")
             }
-
-            startActivityForResult(intent, VOICE_REQUEST)
-
+            startActivityForResult(intent, VOICE_REQUEST_CODE)
         } catch (e: Exception) {
-            Toast.makeText(
-                this,
-                "माइक शुरू नहीं हो पाया",
-                Toast.LENGTH_SHORT
-            ).show()
+            showMessage("इस मोबाइल में Voice Recognition उपलब्ध नहीं है")
         }
     }
 
+    private fun showLiveTV() {
+        showIPTV()
+    }
+
+    private fun showIPTV() {
+        val page = newPage()
+        page.addView(makeText("Smart IPTV Player", 24, whiteColor, true))
+        page.addView(
+            makeText(
+                "अपनी वैध M3U Playlist का URL डालें।",
+                15,
+                mutedColor
+            )
+        )
+
+        val playlistInput = EditText(this).apply {
+            hint = "M3U Playlist URL"
+            setSingleLine(true)
+            setTextColor(whiteColor)
+            setHintTextColor(mutedColor)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(panelColor)
+        }
+
+        page.addView(playlistInput)
+        page.addView(makeButton("Playlist लोड करें") {
+            val playlistUrl = playlistInput.text.toString().trim()
+            if (playlistUrl.isEmpty()) {
+                showMessage("पहले M3U URL डालें")
+            } else {
+                loadM3U(playlistUrl)
+            }
+        })
+
+        channelBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        page.addView(channelBox)
+        setPage(page)
+    }
+
+    private fun loadM3U(playlistUrl: String) {
+        showMessage("Playlist लोड हो रही है...")
+        Thread {
+            try {
+                val connection = URL(playlistUrl).openConnection() as HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
+                connection.requestMethod = "GET"
+
+                val lines = connection.inputStream.bufferedReader().use {
+                    it.readLines()
+                }
+                connection.disconnect()
+
+                val loadedChannels = mutableListOf<Pair<String, String>>()
+                var channelName = "चैनल"
+
+                for (line in lines) {
+                    val item = line.trim()
+                    if (item.startsWith("#EXTINF", ignoreCase = true)) {
+                        channelName = item.substringAfterLast(",").trim()
+                        if (channelName.isEmpty()) channelName = "चैनल"
+                    } else if (
+                        item.isNotEmpty() &&
+                        !item.startsWith("#") &&
+                        (item.startsWith("http://") || item.startsWith("https://"))
+                    ) {
+                        loadedChannels.add(channelName to item)
+                    }
+                }
+
+                runOnUiThread {
+                    channelList.clear()
+                    channelList.addAll(loadedChannels)
+                    channelBox?.removeAllViews()
+
+                    if (loadedChannels.isEmpty()) {
+                        showMessage("कोई चैनल नहीं मिला। M3U URL जाँचें।")
+                    } else {
+                        loadedChannels.forEach { channel ->
+                            channelBox?.addView(
+                                makeButton(channel.first) {
+                                    playChannel(channel.first, channel.second)
+                                }
+                            )
+                        }
+                        showMessage("${loadedChannels.size} चैनल मिले")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    showMessage("Playlist लोड नहीं हुई: ${e.message ?: "त्रुटि"}")
+                }
+            }
+        }.start()
+    }
+
+    private fun playChannel(name: String, streamUrl: String) {
+        try {
+            player?.release()
+
+            player = ExoPlayer.Builder(this).build()
+            playerView = PlayerView(this).apply {
+                player = this@MainActivity.player
+                useController = true
+            }
+
+            val page = newPage()
+            page.addView(makeText(name, 21, whiteColor, true))
+            page.addView(
+                playerView!!,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(230)
+                )
+            )
+
+            page.addView(makeButton("चैनल सूची") {
+                showIPTV()
+            })
+
+            setPage(page)
+
+            player?.setMediaItem(MediaItem.fromUri(streamUrl))
+            player?.prepare()
+            player?.play()
+        } catch (e: Exception) {
+            showMessage("चैनल चलाने में समस्या: ${e.message ?: "त्रुटि"}")
+        }
+    }
+    
+    companion object {
+        private const val VOICE_REQUEST_CODE = 101
+    }
+
+    @Deprecated("Deprecated in Android API")
     override fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
@@ -907,93 +578,47 @@ class MainActivity : Activity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == VOICE_REQUEST && resultCode == RESULT_OK) {
-            val results = data?.getStringArrayListExtra(
-                RecognizerIntent.EXTRA_RESULTS
-            )
+        if (
+            requestCode == VOICE_REQUEST_CODE &&
+            resultCode == RESULT_OK
+        ) {
+            val spokenText = data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
 
-            val query = results?.firstOrNull() ?: return
+            if (!spokenText.isNullOrBlank()) {
+                val command = spokenText.trim()
 
-            tts?.speak(
-                "आपने कहा $query अब मैं इसे खोज रहा हूँ",
-                TextToSpeech.QUEUE_FLUSH,
-                null,
-                "voice_search"
-            )
+                when {
+                    command.contains("यूट्यूब", ignoreCase = true) ||
+                    command.contains("youtube", ignoreCase = true) -> {
+                        openWebsite("https://www.youtube.com")
+                    }
 
-            showBrowser(
-                "https://www.google.com/search?q=" + Uri.encode(query)
-            )
+                    command.contains("ब्राउज़र", ignoreCase = true) ||
+                    command.contains("browser", ignoreCase = true) -> {
+                        showBrowser()
+                    }
+
+                    else -> {
+                        openWebsite(command)
+                    }
+                }
+            }
         }
     }
 
-    // VPN INFORMATION
-
-    private fun showVpnInfo() {
-        AlertDialog.Builder(this)
-            .setTitle("BIJMA AI PRO VPN")
-            .setMessage(
-                "VPN सुविधा के लिए वास्तविक VPN सर्वर, " +
-                "VPN कॉन्फ़िगरेशन और Android VPN Service जरूरी हैं।\n\n" +
-                "अभी VPN कनेक्शन सक्रिय नहीं है।"
-            )
-            .setPositiveButton("ठीक है", null)
-            .show()
-    }
-
-    // RELEASE VIDEO PLAYER
-
-    private fun releasePlayer() {
-        iptvPlayerView?.player = null
-        iptvPlayerView = null
-
+    override fun onDestroy() {
         player?.release()
         player = null
 
-        iptvRoot = null
-        iptvVideoFrame = null
-        iptvTopControls = null
-        iptvChannelTitle = null
-        iptvSearchRow = null
-        iptvChannelScroll = null
-        channelList = null
-        searchInput = null
-    }
-
-    // ANDROID BACK BUTTON
-
-    @Deprecated("Deprecated Android back callback")
-    override fun onBackPressed() {
-        if (customVideoView != null) {
-            hideBrowserVideo()
-            return
+        webView?.apply {
+            stopLoading()
+            destroy()
         }
-
-        if (iptvFullScreen) {
-            toggleIptvFullScreen()
-            return
-        }
-
-        if (webView?.canGoBack() == true) {
-            webView?.goBack()
-            return
-        }
-
-        showHome()
-    }
-
-    // CLEAN UP
-
-    override fun onDestroy() {
-        customVideoCallback = null
-        customVideoView = null
-
-        releasePlayer()
-
-        webView?.stopLoading()
-        webView?.destroy()
         webView = null
 
+        tts?.stop()
         tts?.shutdown()
         tts = null
 
