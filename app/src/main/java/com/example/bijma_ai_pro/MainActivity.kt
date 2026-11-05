@@ -1,31 +1,33 @@
-
 package com.example.bijma_ai_pro
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
-import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.net.HttpURLConnection
 import java.net.URL
@@ -33,595 +35,1238 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private val bgColor = Color.rgb(10, 13, 24)
-    private val panelColor = Color.rgb(25, 30, 48)
-    private val accentColor = Color.rgb(125, 85, 255)
-    private val blueColor = Color.rgb(30, 145, 255)
-    private val whiteColor = Color.WHITE
-    private val mutedColor = Color.rgb(170, 177, 195)
+    private val backgroundColor = Color.rgb(10, 13, 32)
+    private val cardColor = Color.rgb(28, 34, 65)
+    private val accentColor = Color.rgb(112, 82, 255)
+    private val textColor = Color.WHITE
 
-    private var rootLayout: LinearLayout? = null
-    private var webView: WebView? = null
+    private lateinit var root: LinearLayout
+
+    private var browser: WebView? = null
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
-    private var channelBox: LinearLayout? = null
-    private var tts: TextToSpeech? = null
 
-    private val channelList =
-        mutableListOf<Pair<String, String>>()
+    private val channels = mutableListOf<Pair<String, String>>()
+    private var currentChannelIndex = -1
+
+    private var fullScreenView: View? = null
+    private var fullScreenCallback:
+        WebChromeClient.CustomViewCallback? = null
+
+    private var browserAddress: EditText? = null
+
+    companion object {
+        private const val FILE_REQUEST = 1001
+        private const val VOICE_REQUEST = 1002
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        window.statusBarColor = bgColor
-        window.navigationBarColor = Color.BLACK
-
-        window.setSoftInputMode(
-            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        )
-
         showHome()
     }
 
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
+    private fun setupRoot() {
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(backgroundColor)
+            setPadding(16, 12, 16, 12)
+        }
+        setContentView(root)
     }
 
-    private fun rounded(
-        color: Int,
-        radius: Int = 18,
-        strokeColor: Int = Color.TRANSPARENT
-    ): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(radius).toFloat()
-            if (strokeColor != Color.TRANSPARENT) {
-                setStroke(dp(1), strokeColor)
-            }
+    private fun addTitle(title: String) {
+        val heading = TextView(this).apply {
+            text = title
+            textSize = 25f
+            setTextColor(textColor)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(8, 18, 8, 18)
         }
-    }
-
-    private fun makeText(
-        value: String,
-        size: Float = 15f,
-        color: Int = whiteColor,
-        bold: Boolean = false
-    ): TextView {
-        return TextView(this).apply {
-            text = value
-            textSize = size
-            setTextColor(color)
-            gravity = Gravity.CENTER_VERTICAL
-
-            if (bold) {
-                setTypeface(null, Typeface.BOLD)
-            }
-        }
+        root.addView(heading)
     }
 
     private fun makeButton(
-        value: String,
+        label: String,
         action: () -> Unit
     ): Button {
         return Button(this).apply {
-            text = value
-            textSize = 14f
+            text = label
+            textSize = 16f
             isAllCaps = false
-            setTextColor(whiteColor)
-            background = rounded(panelColor, 14, accentColor)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setTextColor(textColor)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = 24f
+                setStroke(2, accentColor)
+            }
+            setPadding(12, 13, 12, 13)
             setOnClickListener { action() }
         }
     }
 
-    private fun newPage(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bgColor)
-            setPadding(dp(16), dp(12), dp(16), dp(16))
-        }
-    }
-
-    private fun setPage(page: LinearLayout) {
-        rootLayout = page
-        setContentView(page)
-    }
-
-    private fun addSpace(
-        parent: LinearLayout,
-        height: Int
+    private fun addButton(
+        label: String,
+        action: () -> Unit
     ) {
-        parent.addView(
-            View(this),
+        root.addView(
+            makeButton(label, action),
             LinearLayout.LayoutParams(
-                1,
-                dp(height)
-            )
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 6, 0, 6)
+            }
         )
     }
 
-    private fun showMessage(message: String) {
-        Toast.makeText(
-            this,
-            message,
-            Toast.LENGTH_SHORT
-        ).show()
+    private fun addHomeButton(
+        parent: LinearLayout,
+        label: String,
+        action: () -> Unit
+    ) {
+        parent.addView(
+            makeButton(label, action),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 7, 0, 7)
+            }
+        )
     }
-    
+
     private fun showHome() {
-        val page = newPage()
-        setPage(page)
+        closeBrowser()
+        stopPlayer()
+        setupRoot()
 
         val scroll = ScrollView(this)
+
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+
+        val logoId = resources.getIdentifier(
+            "bijma_ai_pro_",
+            "drawable",
+            packageName
+        )
+
+        if (logoId != 0) {
+            val logo = ImageView(this).apply {
+                setImageResource(logoId)
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setPadding(16, 12, 16, 12)
+            }
+
+            content.addView(
+                logo,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    190
+                )
+            )
+        }
+
+        val title = TextView(this).apply {
+            text = "BIJMA AI PRO"
+            textSize = 29f
+            setTextColor(textColor)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(8, 10, 8, 8)
+        }
+        content.addView(title)
+
+        val subtitle = TextView(this).apply {
+            text = "Smart Entertainment • Browser • IPTV"
+            textSize = 14f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(8, 4, 8, 20)
+        }
+        content.addView(subtitle)
+
+        addHomeButton(content, "🌐  Smart Browser") {
+            showBrowser("https://www.google.com")
+        }
+
+        addHomeButton(content, "▶  YouTube") {
+            showBrowser("https://m.youtube.com")
+        }
+
+        addHomeButton(content, "📺  Live TV / IPTV") {
+            showIPTV()
+        }
+
+        addHomeButton(content, "🎙  Voice Assistant") {
+            showVoiceAssistant()
+        }
+
+        addHomeButton(content, "📁  File Manager") {
+            openFileManager()
+        }
+
+        addHomeButton(content, "⬇  Downloads") {
+            showDownloads()
         }
 
         scroll.addView(content)
-        page.addView(
+
+        root.addView(
             scroll,
             LinearLayout.LayoutParams(
-                -1, 0, 1f
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
+    }
 
-        // Logo and title
-        val header = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
+    private fun showBrowser(startUrl: String) {
+        stopPlayer()
+        closeBrowser()
+        setupRoot()
+
+        addTitle("BIJMA SMART BROWSER")
+
+        val address = EditText(this).apply {
+            hint = "वेबसाइट या URL लिखें"
+            setText(startUrl)
+            setTextColor(textColor)
+            setHintTextColor(Color.LTGRAY)
+            setSingleLine(true)
+            setPadding(12, 12, 12, 12)
+            setBackgroundColor(cardColor)
+        }
+
+        browserAddress = address
+        root.addView(address)
+
+        val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
 
-        val robot = makeText("🤖", 36f)
-        header.addView(robot)
+        val goButton = makeButton("GO") {
+            val typed = address.text.toString().trim()
 
-        val titleBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, 0, 0)
+            if (typed.isNotEmpty()) {
+                val finalUrl =
+                    if (typed.startsWith("http://") ||
+                        typed.startsWith("https://")) {
+                        typed
+                    } else {
+                        "https://$typed"
+                    }
+
+                browser?.loadUrl(finalUrl)
+            }
         }
 
-        titleBox.addView(
-            makeText("BIJMA AI", 23f, whiteColor, true)
-        )
-        titleBox.addView(
-            makeText("PRO", 13f, accentColor, true)
-        )
+        val backButton = makeButton("Back") {
+            if (browser?.canGoBack() == true) {
+                browser?.goBack()
+            }
+        }
 
-        header.addView(
-            titleBox,
+        val homeButton = makeButton("Home") {
+            showHome()
+        }
+
+        controls.addView(
+            goButton,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+        controls.addView(
+            backButton,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+        controls.addView(
+            homeButton,
             LinearLayout.LayoutParams(0, -2, 1f)
         )
 
-        header.addView(
-            makeButton("⚙") {
-                showSettings()
+        root.addView(controls)
+
+        val web = WebView(this)
+        browser = web
+
+        web.settings.javaScriptEnabled = true
+        web.settings.domStorageEnabled = true
+        web.settings.loadsImagesAutomatically = true
+        web.settings.useWideViewPort = true
+        web.settings.loadWithOverviewMode = true
+        web.settings.mediaPlaybackRequiresUserGesture = false
+
+        web.webViewClient = object : WebViewClient() {
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                return false
             }
-        )
 
-        content.addView(header)
-        addSpace(content, 25)
-
-        // Welcome
-        content.addView(
-            makeText("Hello! Welcome back", 22f, whiteColor, true)
-        )
-        content.addView(
-            makeText(
-                "Your smart digital world",
-                14f,
-                mutedColor
-            )
-        )
-
-        addSpace(content, 22)
-
-        // Search bar
-        val searchBox = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = rounded(panelColor, 25)
-            setPadding(dp(15), dp(5), dp(8), dp(5))
-        }
-
-        val searchInput = EditText(this).apply {
-            hint = "Search Google or enter website"
-            setHintTextColor(mutedColor)
-            setTextColor(whiteColor)
-            textSize = 14f
-            setSingleLine(true)
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-
-        searchBox.addView(
-            searchInput,
-            LinearLayout.LayoutParams(0, dp(52), 1f)
-        )
-
-        searchBox.addView(
-            makeButton("GO") {
-                val query = searchInput.text.toString().trim()
-                if (query.isNotEmpty()) {
-                    openWebsite(query)
+            override fun onPageFinished(
+                view: WebView?,
+                url: String?
+            ) {
+                if (url != null) {
+                    address.setText(url)
                 }
             }
-        )
-
-        content.addView(searchBox)
-        addSpace(content, 25)
-
-        content.addView(
-            makeText("Quick Shortcuts", 18f, whiteColor, true)
-        )
-
-        addSpace(content, 12)
-
-        val shortcuts = listOf(
-            "Google" to "https://www.google.com",
-            "YouTube" to "https://m.youtube.com",
-            "Facebook" to "https://www.facebook.com",
-            "Wikipedia" to "https://www.wikipedia.org"
-        )
-
-        val shortcutRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
         }
 
-        shortcuts.forEach { item ->
-            val button = makeButton(item.first) {
-                openWebsite(item.second)
-            }
+        web.webChromeClient = object : WebChromeClient() {
 
-            shortcutRow.addView(
-                button,
-                LinearLayout.LayoutParams(0, dp(55), 1f).apply {
-                    marginEnd = dp(5)
-                }
-            )
-        }
+            override fun onShowCustomView(
+                view: View?,
+                callback: CustomViewCallback?
+            ) {
+                if (view == null) return
 
-        content.addView(shortcutRow)
-        addSpace(content, 25)
-
-        content.addView(
-            makeText("All Features", 20f, whiteColor, true)
-        )
-
-        addSpace(content, 14)
-
-        val features = listOf(
-            "🎙 AI Voice" to { showVoiceAssistant() },
-            "▶ YouTube" to { openWebsite("https://m.youtube.com") },
-            "📺 Live TV" to { showLiveTV() },
-            "🎬 IPTV Player" to { showIPTV() },
-            "🌐 Smart Browser" to { showBrowser() },
-            "🔎 Google Search" to { openWebsite("https://www.google.com") },
-            "🛡 VPN Settings" to { showSettings() },
-            "📁 File Manager" to { showMessage("File Manager") },
-            "📋 M3U Playlist" to { showIPTV() },
-            "⬇ Downloads" to { showMessage("Download Manager") }
-        )
-
-        features.chunked(2).forEach { rowItems ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-
-            rowItems.forEach { feature ->
-                val button = makeButton(feature.first) {
-                    feature.second()
+                if (fullScreenView != null) {
+                    callback?.onCustomViewHidden()
+                    return
                 }
 
-                row.addView(
-                    button,
-                    LinearLayout.LayoutParams(0, dp(65), 1f).apply {
-                        marginEnd = dp(8)
-                        bottomMargin = dp(8)
-                    }
+                fullScreenView = view
+                fullScreenCallback = callback
+                root.visibility = View.GONE
+
+                addContentView(
+                    view,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+
+                window.addFlags(
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN
                 )
             }
 
-            if (rowItems.size == 1) {
-                row.addView(
-                    View(this),
-                    LinearLayout.LayoutParams(0, dp(65), 1f)
-                )
+            override fun onHideCustomView() {
+                exitWebFullScreen()
             }
-
-            content.addView(row)
         }
 
-        addSpace(content, 20)
-
-        content.addView(
-            makeText(
-                "BIJMA AI PRO • Smart Browser Experience",
-                12f,
-                mutedColor
-            ).apply {
-                gravity = Gravity.CENTER
-            }
-        )
-    }
-    
-    private fun openWebsite(value: String) {
-        val input = value.trim()
-        if (input.isEmpty()) {
-            showMessage("कृपया वेबसाइट या सर्च लिखें")
-            return
-        }
-
-        val url = when {
-            input.startsWith("http://") || input.startsWith("https://") -> input
-            input.contains(".") && !input.contains(" ") ->
-                "https://$input"
-            else ->
-                "https://www.google.com/search?q=${Uri.encode(input)}"
-        }
-
-        showBrowser()
-        webView?.loadUrl(url)
-    }
-
-    private fun showBrowser() {
-        val page = newPage()
-
-        val address = EditText(this).apply {
-            hint = "वेबसाइट या Google Search लिखें"
-            setSingleLine(true)
-            setTextColor(whiteColor)
-            setHintTextColor(mutedColor)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = rounded(panelColor)
-        }
-
-        val openButton = makeButton("खोलें") {
-            openWebsite(address.text.toString())
-        }
-
-        page.addView(address)
-        page.addView(openButton)
-
-        val browser = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.loadsImagesAutomatically = true
-            webViewClient = WebViewClient()
-            webChromeClient = WebChromeClient()
-        }
-
-        webView = browser
-        page.addView(
-            browser,
+        root.addView(
+            web,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
                 1f
             )
         )
-        setPage(page)
+
+        web.loadUrl(startUrl)
     }
 
-    private fun showSettings() {
-        val page = newPage()
-        page.addView(makeText("सेटिंग्स", 25f, whiteColor, true))
-        page.addView(makeText("VPN सेटिंग्स", 19f, whiteColor, true))
-        page.addView(
-            makeText(
-                "यहाँ VPN सर्वर और कनेक्शन की सेटिंग रखी जाएगी। " +
-                    "अभी सर्वर की जानकारी उपलब्ध नहीं है, इसलिए VPN कनेक्ट नहीं होगा।",
-                15f,
-                mutedColor
-            )
+    private fun exitWebFullScreen() {
+        val view = fullScreenView ?: return
+
+        (view.parent as? ViewGroup)?.removeView(view)
+        fullScreenView = null
+
+        val callback = fullScreenCallback
+        fullScreenCallback = null
+        callback?.onCustomViewHidden()
+
+        root.visibility = View.VISIBLE
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
-        page.addView(makeButton("होम पर वापस जाएँ") {
-            showHome()
-        })
-        setPage(page)
     }
 
-    private fun showVoiceAssistant() {
-        try {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                )
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "बोलिए, मैं सुन रहा हूँ")
-            }
-            startActivityForResult(intent, VOICE_REQUEST_CODE)
-        } catch (e: Exception) {
-            showMessage("इस मोबाइल में Voice Recognition उपलब्ध नहीं है")
+    private fun closeBrowser() {
+        if (fullScreenView != null) {
+            exitWebFullScreen()
         }
+
+        browser?.apply {
+            stopLoading()
+            loadUrl("about:blank")
+            removeAllViews()
+            destroy()
+        }
+
+        browser = null
+        browserAddress = null
     }
 
-    private fun showLiveTV() {
-        showIPTV()
-    }
+        // ==============================
+    // IPTV PLAYER
+    // ==============================
 
     private fun showIPTV() {
-        val page = newPage()
-        page.addView(makeText("Smart IPTV Player", 24f, whiteColor, true))
-        page.addView(
-            makeText(
-                "अपनी वैध M3U Playlist का URL डालें।",
-                15f,
-                mutedColor
-            )
-        )
+        closeBrowser()
+        stopPlayer()
+        setupRoot()
 
-        val playlistInput = EditText(this).apply {
-            hint = "M3U Playlist URL"
-            setSingleLine(true)
-            setTextColor(whiteColor)
-            setHintTextColor(mutedColor)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = rounded(panelColor)
+        addTitle("BIJMA AI PRO • LIVE TV")
+
+        val description = TextView(this).apply {
+            text = "अपनी M3U Playlist से TV चैनल चलाएँ"
+            textSize = 15f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(8, 10, 8, 20)
+        }
+        root.addView(description)
+
+        addButton("M3U Playlist URL से Load करें") {
+            showPlaylistUrlDialog()
         }
 
-        page.addView(playlistInput)
-        page.addView(makeButton("Playlist लोड करें") {
-            val playlistUrl = playlistInput.text.toString().trim()
-            if (playlistUrl.isEmpty()) {
-                showMessage("पहले M3U URL डालें")
-            } else {
-                loadM3U(playlistUrl)
-            }
-        })
-
-        channelBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        addButton("मोबाइल से M3U फाइल चुनें") {
+            openPlaylistFile()
         }
-        page.addView(channelBox)
-        setPage(page)
+
+        addButton("AI Playlist सुविधा") {
+            showAIPlaylist()
+        }
+
+        addButton("मेरे चैनल") {
+            showChannelList()
+        }
+
+        addButton("Home") {
+            showHome()
+        }
     }
 
-    private fun loadM3U(playlistUrl: String) {
+    private fun showPlaylistUrlDialog() {
+        val input = EditText(this).apply {
+            hint = "https://example.com/playlist.m3u"
+            setTextColor(textColor)
+            setHintTextColor(Color.GRAY)
+            setPadding(15, 15, 15, 15)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("M3U Playlist URL")
+            .setView(input)
+            .setPositiveButton("LOAD") { _, _ ->
+                val url = input.text.toString().trim()
+
+                if (url.isNotEmpty()) {
+                    loadM3UFromUrl(url)
+                } else {
+                    showMessage("Playlist URL डालें")
+                }
+            }
+            .setNegativeButton("रद्द करें", null)
+            .show()
+    }
+
+    private fun openPlaylistFile() {
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+
+            startActivityForResult(intent, FILE_REQUEST)
+
+        } catch (e: Exception) {
+            showMessage("फाइल नहीं खुल सकी")
+        }
+    }
+
+    private fun loadM3UFromUrl(url: String) {
         showMessage("Playlist लोड हो रही है...")
+
         Thread {
+            var connection: HttpURLConnection? = null
+
             try {
-                val connection = URL(playlistUrl).openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
+                val finalUrl = if (
+                    url.startsWith("http://") ||
+                    url.startsWith("https://")
+                ) {
+                    url
+                } else {
+                    "https://$url"
+                }
+
+                connection =
+                    URL(finalUrl).openConnection() as HttpURLConnection
+
+                connection.connectTimeout = 20000
+                connection.readTimeout = 20000
                 connection.requestMethod = "GET"
+                connection.setRequestProperty(
+                    "User-Agent",
+                    "BIJMA-AI-PRO"
+                )
 
-                val lines = connection.inputStream.bufferedReader().use {
-                    it.readLines()
+                connection.connect()
+
+                if (connection.responseCode !in 200..299) {
+                    throw Exception(
+                        "Server Error: ${connection.responseCode}"
+                    )
                 }
-                connection.disconnect()
 
-                val loadedChannels = mutableListOf<Pair<String, String>>()
-                var channelName = "चैनल"
+                val content = connection.inputStream
+                    .bufferedReader()
+                    .use { it.readText() }
 
-                for (line in lines) {
-                    val item = line.trim()
-                    if (item.startsWith("#EXTINF", ignoreCase = true)) {
-                        channelName = item.substringAfterLast(",").trim()
-                        if (channelName.isEmpty()) channelName = "चैनल"
-                    } else if (
-                        item.isNotEmpty() &&
-                        !item.startsWith("#") &&
-                        (item.startsWith("http://") || item.startsWith("https://"))
-                    ) {
-                        loadedChannels.add(channelName to item)
-                    }
-                }
+                val parsedChannels = parseM3U(content)
 
                 runOnUiThread {
-                    channelList.clear()
-                    channelList.addAll(loadedChannels)
-                    channelBox?.removeAllViews()
+                    channels.clear()
+                    channels.addAll(parsedChannels)
 
-                    if (loadedChannels.isEmpty()) {
-                        showMessage("कोई चैनल नहीं मिला। M3U URL जाँचें।")
+                    if (channels.isEmpty()) {
+                        showMessage("इस Playlist में चैनल नहीं मिले")
                     } else {
-                        loadedChannels.forEach { channel ->
-                            channelBox?.addView(
-                                makeButton(channel.first) {
-                                    playChannel(channel.first, channel.second)
-                                }
-                            )
-                        }
-                        showMessage("${loadedChannels.size} चैनल मिले")
+                        showMessage(
+                            "${channels.size} चैनल लोड हो गए"
+                        )
+                        showChannelList()
                     }
                 }
+
             } catch (e: Exception) {
                 runOnUiThread {
-                    showMessage("Playlist लोड नहीं हुई: ${e.message ?: "त्रुटि"}")
+                    showMessage(
+                        "Playlist लोड नहीं हुई: ${e.message}"
+                    )
                 }
+            } finally {
+                connection?.disconnect()
             }
         }.start()
     }
 
-    private fun playChannel(name: String, streamUrl: String) {
-        try {
-            player?.release()
+    private fun parseM3U(
+        content: String
+    ): List<Pair<String, String>> {
 
-            player = ExoPlayer.Builder(this).build()
-            playerView = PlayerView(this).apply {
-                player = this@MainActivity.player
-                useController = true
+        val result = mutableListOf<Pair<String, String>>()
+        var channelName = "Unknown Channel"
+
+        content.lineSequence().forEach { rawLine ->
+
+            val line = rawLine.trim()
+
+            if (line.startsWith("#EXTINF", ignoreCase = true)) {
+
+                val commaPosition = line.lastIndexOf(",")
+
+                channelName = if (commaPosition >= 0) {
+                    line.substring(commaPosition + 1).trim()
+                } else {
+                    line.substringAfter("tvg-name=\"")
+                        .substringBefore("\"")
+                        .ifEmpty { "Unknown Channel" }
+                }
+
+                if (channelName.isBlank()) {
+                    channelName = "Unknown Channel"
+                }
+
+            } else if (
+                line.isNotEmpty() &&
+                !line.startsWith("#") &&
+                (
+                    line.startsWith("http://") ||
+                    line.startsWith("https://")
+                )
+            ) {
+                result.add(channelName to line)
+                channelName = "Unknown Channel"
+            }
+        }
+
+        return result
+    }
+
+    // ==============================
+    // CHANNEL LIST
+    // ==============================
+
+    private fun showChannelList() {
+        stopPlayer()
+        setupRoot()
+
+        addTitle("LIVE TV CHANNELS")
+
+        val count = TextView(this).apply {
+            text = "कुल चैनल: ${channels.size}"
+            textSize = 15f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(8, 5, 8, 15)
+        }
+
+        root.addView(count)
+
+        if (channels.isEmpty()) {
+            val empty = TextView(this).apply {
+                text = "अभी कोई चैनल उपलब्ध नहीं है।\nपहले M3U Playlist लोड करें।"
+                textSize = 16f
+                setTextColor(textColor)
+                gravity = Gravity.CENTER
+                setPadding(12, 30, 12, 30)
             }
 
-            val page = newPage()
-            page.addView(makeText(name, 21f, whiteColor, true))
-            page.addView(
-                playerView!!,
-                LinearLayout.LayoutParams(
+            root.addView(empty)
+
+            addButton("Playlist लोड करें") {
+                showIPTV()
+            }
+
+            addButton("Home") {
+                showHome()
+            }
+
+            return
+        }
+
+        val search = EditText(this).apply {
+            hint = "चैनल खोजें..."
+            setTextColor(textColor)
+            setHintTextColor(Color.GRAY)
+            setSingleLine(true)
+            setPadding(12, 12, 12, 12)
+            setBackgroundColor(cardColor)
+        }
+
+        root.addView(search)
+
+        val scroll = ScrollView(this)
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        scroll.addView(list)
+
+        root.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        fun populateChannels(query: String) {
+            list.removeAllViews()
+
+            channels.forEachIndexed { index, channel ->
+
+                if (
+                    query.isNotBlank() &&
+                    !channel.first.contains(
+                        query,
+                        ignoreCase = true
+                    )
+                ) {
+                    return@forEachIndexed
+                }
+
+                val button = makeButton(
+                    "${index + 1}. ${channel.first}"
+                ) {
+                    playChannel(index)
+                }
+
+                list.addView(
+                    button,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 4, 0, 4)
+                    }
+                )
+            }
+        }
+
+        populateChannels("")
+
+        search.addTextChangedListener(
+            object : android.text.TextWatcher {
+
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int
+                ) {}
+
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int
+                ) {
+                    populateChannels(s?.toString().orEmpty())
+                }
+
+                override fun afterTextChanged(
+                    s: android.text.Editable?
+                ) {}
+            }
+        )
+
+        addButton("नई Playlist") {
+            showIPTV()
+        }
+
+        addButton("Home") {
+            showHome()
+        }
+    }
+
+    // ==============================
+    // VIDEO PLAYER
+    // ==============================
+
+    private fun playChannel(index: Int) {
+        if (index !in channels.indices) {
+            showMessage("चैनल उपलब्ध नहीं है")
+            return
+        }
+
+        stopPlayer()
+
+        currentChannelIndex = index
+
+        setupRoot()
+
+        val channel = channels[index]
+
+        addTitle(channel.first)
+
+        val videoView = PlayerView(this).apply {
+            useController = true
+            resizeMode =
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+
+            setShowBuffering(
+                PlayerView.SHOW_BUFFERING_ALWAYS
+            )
+        }
+
+        playerView = videoView
+
+        root.addView(
+            videoView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        player = ExoPlayer.Builder(this).build().also { exo ->
+
+            videoView.player = exo
+
+            exo.setMediaItem(
+                MediaItem.fromUri(channel.second)
+            )
+
+            exo.prepare()
+            exo.playWhenReady = true
+
+            exo.addListener(
+                object : Player.Listener {
+
+                    override fun onPlayerError(
+                        error: PlaybackException
+                    ) {
+                        showMessage(
+                            "चैनल चलाने में समस्या: ${error.message}"
+                        )
+                    }
+
+                    override fun onPlaybackStateChanged(
+                        playbackState: Int
+                    ) {
+                        if (
+                            playbackState ==
+                            Player.STATE_READY
+                        ) {
+                            window.addFlags(
+                                WindowManager.LayoutParams
+                                    .FLAG_KEEP_SCREEN_ON
+                            )
+                        }
+                    }
+                }
+            )
+        }
+
+        // वीडियो Zoom और Fit नियंत्रण
+
+        addButton("Zoom / Fill") {
+            playerView?.resizeMode =
+                AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        }
+
+        addButton("Fit Screen") {
+            playerView?.resizeMode =
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+
+        addButton("Stretch Screen") {
+            playerView?.resizeMode =
+                AspectRatioFrameLayout.RESIZE_MODE_FILL
+        }
+
+        addButton("Fullscreen") {
+            togglePlayerFullScreen()
+        }
+
+        addButton("अगला चैनल") {
+            if (currentChannelIndex < channels.lastIndex) {
+                playChannel(currentChannelIndex + 1)
+            } else {
+                showMessage("यह आखिरी चैनल है")
+            }
+        }
+
+        addButton("पिछला चैनल") {
+            if (currentChannelIndex > 0) {
+                playChannel(currentChannelIndex - 1)
+            } else {
+                showMessage("यह पहला चैनल है")
+            }
+        }
+
+        addButton("चैनल सूची") {
+            showChannelList()
+        }
+
+        addButton("Home") {
+            showHome()
+        }
+    }
+
+    private fun stopPlayer() {
+        playerView?.player = null
+
+        player?.release()
+        player = null
+
+        playerView = null
+
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+    }
+
+    // ==============================
+    // PLAYER FULLSCREEN
+    // ==============================
+
+    private var playerFullScreen = false
+    private var playerOriginalParent: ViewGroup? = null
+    private var playerOriginalIndex = -1
+    private var playerOriginalLayoutParams:
+        ViewGroup.LayoutParams? = null
+
+    private fun togglePlayerFullScreen() {
+        val view = playerView ?: return
+
+        if (!playerFullScreen) {
+
+            val parent = view.parent as? ViewGroup ?: return
+
+            playerOriginalParent = parent
+            playerOriginalIndex = parent.indexOfChild(view)
+            playerOriginalLayoutParams = view.layoutParams
+
+            parent.removeView(view)
+
+            val fullScreenContainer = android.widget.FrameLayout(this)
+
+            fullScreenContainer.addView(
+                view,
+                android.widget.FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(230)
+                    ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
 
-            page.addView(makeButton("चैनल सूची") {
-                showIPTV()
-            })
+            setContentView(fullScreenContainer)
 
-            setPage(page)
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
 
-            player?.setMediaItem(MediaItem.fromUri(streamUrl))
-            player?.prepare()
-            player?.play()
-        } catch (e: Exception) {
-            showMessage("चैनल चलाने में समस्या: ${e.message ?: "त्रुटि"}")
+            window.decorView.systemUiVisibility =
+                (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
+
+            playerFullScreen = true
+
+        } else {
+
+            val container = view.parent as? ViewGroup
+            container?.removeView(view)
+
+            val parent = playerOriginalParent
+
+            if (parent != null) {
+                val index = playerOriginalIndex.coerceIn(
+                    0,
+                    parent.childCount
+                )
+
+                parent.addView(
+                    view,
+                    index,
+                    playerOriginalLayoutParams
+                )
+            }
+
+            setContentView(root)
+
+            window.clearFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
+
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+
+            playerFullScreen = false
         }
     }
-    
-    companion object {
-        private const val VOICE_REQUEST_CODE = 101
+
+        // ==============================
+    // VOICE ASSISTANT
+    // ==============================
+
+    private fun showVoiceAssistant() {
+        closeBrowser()
+        stopPlayer()
+        setupRoot()
+
+        addTitle("BIJMA AI VOICE ASSISTANT")
+
+        val info = TextView(this).apply {
+            text = "नमस्कार! मैं आपकी क्या मदद कर सकती हूँ?"
+            textSize = 18f
+            setTextColor(textColor)
+            gravity = Gravity.CENTER
+            setPadding(12, 20, 12, 20)
+        }
+
+        root.addView(info)
+
+        addButton("🎙 बोलकर कमांड दें") {
+            startVoiceRecognition()
+        }
+
+        addButton("Home") {
+            showHome()
+        }
     }
 
-    @Deprecated("Deprecated in Android API")
+    private fun startVoiceRecognition() {
+        try {
+            val intent = Intent(
+                RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+            ).apply {
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE,
+                    "hi-IN"
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_PROMPT,
+                    "अपनी कमांड बोलें"
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_MAX_RESULTS,
+                    3
+                )
+            }
+
+            startActivityForResult(intent, VOICE_REQUEST)
+
+        } catch (e: Exception) {
+            showMessage(
+                "Voice Recognition उपलब्ध नहीं है"
+            )
+        }
+    }
+
+    private fun handleVoiceCommand(command: String) {
+        val text = command.lowercase(Locale.ROOT)
+
+        when {
+            text.contains("youtube") ||
+            text.contains("यूट्यूब") -> {
+                showBrowser("https://m.youtube.com")
+            }
+
+            text.contains("google") ||
+            text.contains("गूगल") -> {
+                showBrowser("https://www.google.com")
+            }
+
+            text.contains("browser") ||
+            text.contains("ब्राउज़र") -> {
+                showBrowser("https://www.google.com")
+            }
+
+            text.contains("tv") ||
+            text.contains("टीवी") ||
+            text.contains("चैनल") -> {
+                showIPTV()
+            }
+
+            text.contains("home") ||
+            text.contains("होम") -> {
+                showHome()
+            }
+
+            text.contains("फाइल") ||
+            text.contains("file") -> {
+                openFileManager()
+            }
+
+            text.contains("download") ||
+            text.contains("डाउनलोड") -> {
+                showDownloads()
+            }
+
+            else -> {
+                showMessage(
+                    "कमांड समझ नहीं आई: $command"
+                )
+            }
+        }
+    }
+
+    // ==============================
+    // AI PLAYLIST INTERFACE
+    // ==============================
+
+    private fun showAIPlaylist() {
+        setupRoot()
+
+        addTitle("AI M3U PLAYLIST")
+
+        val info = TextView(this).apply {
+            text = """
+                BIJMA AI PRO Playlist Assistant
+
+                आप अपनी M3U Playlist लोड कर सकते हैं।
+                ऐप चैनलों की सूची पढ़कर उन्हें खोजने और
+                चलाने में मदद करेगा।
+
+                वास्तविक AI निर्माण और खराब चैनलों की
+                स्वतः मरम्मत के लिए AI API सेवा आवश्यक है।
+            """.trimIndent()
+
+            textSize = 15f
+            setTextColor(textColor)
+            setPadding(12, 15, 12, 20)
+        }
+
+        root.addView(info)
+
+        addButton("M3U Playlist लोड करें") {
+            showIPTV()
+        }
+
+        addButton("चैनल सूची देखें") {
+            showChannelList()
+        }
+
+        addButton("Home") {
+            showHome()
+        }
+    }
+
+    // ==============================
+    // FILE MANAGER
+    // ==============================
+
+    private fun openFileManager() {
+        try {
+            val intent = Intent(
+                Intent.ACTION_OPEN_DOCUMENT
+            ).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+
+            startActivityForResult(
+                intent,
+                FILE_REQUEST
+            )
+
+        } catch (e: Exception) {
+            showMessage(
+                "File Manager नहीं खुल सका"
+            )
+        }
+    }
+
+    // ==============================
+    // DOWNLOADS
+    // ==============================
+
+    private fun showDownloads() {
+        try {
+            val intent = Intent(
+                Intent.ACTION_VIEW
+            ).apply {
+                data = Uri.parse(
+                    "content://downloads/all_downloads"
+                )
+            }
+
+            startActivity(intent)
+
+        } catch (e: Exception) {
+            openFileManager()
+        }
+    }
+
+    // ==============================
+    // ACTIVITY RESULTS
+    // ==============================
+
+    @Deprecated("Deprecated in Android")
     override fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
         data: Intent?
     ) {
-        super.onActivityResult(requestCode, resultCode, data)
+        super.onActivityResult(
+            requestCode,
+            resultCode,
+            data
+        )
 
-        if (
-            requestCode == VOICE_REQUEST_CODE &&
-            resultCode == RESULT_OK
-        ) {
-            val spokenText = data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
+        if (resultCode != RESULT_OK || data == null) {
+            return
+        }
 
-            if (!spokenText.isNullOrBlank()) {
-                val command = spokenText.trim()
+        when (requestCode) {
 
-                when {
-                    command.contains("यूट्यूब", ignoreCase = true) ||
-                    command.contains("youtube", ignoreCase = true) -> {
-                        openWebsite("https://www.youtube.com")
+            FILE_REQUEST -> {
+                val uri = data.data ?: return
+
+                try {
+                    val content = contentResolver
+                        .openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+
+                    if (content.isNullOrBlank()) {
+                        showMessage("फाइल खाली है")
+                        return
                     }
 
-                    command.contains("ब्राउज़र", ignoreCase = true) ||
-                    command.contains("browser", ignoreCase = true) -> {
-                        showBrowser()
+                    val parsed = parseM3U(content)
+
+                    channels.clear()
+                    channels.addAll(parsed)
+
+                    if (channels.isNotEmpty()) {
+                        showChannelList()
+                    } else {
+                        showMessage(
+                            "इस फाइल में M3U चैनल नहीं मिले"
+                        )
                     }
 
-                    else -> {
-                        openWebsite(command)
-                    }
+                } catch (e: Exception) {
+                    showMessage(
+                        "फाइल पढ़ने में समस्या: ${e.message}"
+                    )
+                }
+            }
+
+            VOICE_REQUEST -> {
+                val results =
+                    data.getStringArrayListExtra(
+                        RecognizerIntent.EXTRA_RESULTS
+                    )
+
+                val command = results?.firstOrNull()
+
+                if (!command.isNullOrBlank()) {
+                    handleVoiceCommand(command)
                 }
             }
         }
     }
 
-    override fun onDestroy() {
-        player?.release()
-        player = null
+    // ==============================
+    // BACK BUTTON
+    // ==============================
 
-        webView?.apply {
-            stopLoading()
-            destroy()
+    @Deprecated("Deprecated in Android")
+    override fun onBackPressed() {
+
+        if (fullScreenView != null) {
+            exitWebFullScreen()
+            return
         }
-        webView = null
 
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
+        if (playerFullScreen) {
+            togglePlayerFullScreen()
+            return
+        }
 
+        if (browser?.canGoBack() == true) {
+            browser?.goBack()
+            return
+        }
+
+        if (player != null) {
+            showChannelList()
+            return
+        }
+
+        if (browser != null) {
+            closeBrowser()
+        }
+
+        showHome()
+    }
+
+    // ==============================
+    // CLEANUP
+    // ==============================
+
+    override fun onPause() {
+        super.onPause()
+
+        if (player != null) {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+        }
+    }
+
+    override fun onDestroy() {
+        closeBrowser()
+        stopPlayer()
         super.onDestroy()
     }
+
 }
