@@ -227,7 +227,7 @@ class MainActivity : Activity() {
             setHintTextColor(mutedColor)
             setTextColor(whiteColor)
             textSize = 14f
-            singleLine = true
+            setSingleLine(true)
             setBackgroundColor(Color.TRANSPARENT)
         }
 
@@ -402,13 +402,13 @@ class MainActivity : Activity() {
 
     private fun showSettings() {
         val page = newPage()
-        page.addView(makeText("सेटिंग्स", 25, whiteColor, true))
-        page.addView(makeText("VPN सेटिंग्स", 19, whiteColor, true))
+        page.addView(makeText("सेटिंग्स", 25f, whiteColor, true))
+        page.addView(makeText("VPN सेटिंग्स", 19f, whiteColor, true))
         page.addView(
             makeText(
                 "यहाँ VPN सर्वर और कनेक्शन की सेटिंग रखी जाएगी। " +
                     "अभी सर्वर की जानकारी उपलब्ध नहीं है, इसलिए VPN कनेक्ट नहीं होगा।",
-                15,
+                15f,
                 mutedColor
             )
         )
@@ -440,11 +440,11 @@ class MainActivity : Activity() {
 
     private fun showIPTV() {
         val page = newPage()
-        page.addView(makeText("Smart IPTV Player", 24, whiteColor, true))
+        page.addView(makeText("Smart IPTV Player", 24f, whiteColor, true))
         page.addView(
             makeText(
                 "अपनी वैध M3U Playlist का URL डालें।",
-                15,
+                15f,
                 mutedColor
             )
         )
@@ -543,7 +543,7 @@ class MainActivity : Activity() {
             }
 
             val page = newPage()
-            page.addView(makeText(name, 21, whiteColor, true))
+            page.addView(makeText(name, 21f, whiteColor, true))
             page.addView(
                 playerView!!,
                 LinearLayout.LayoutParams(
